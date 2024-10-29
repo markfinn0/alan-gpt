@@ -1,0 +1,235 @@
+import React, { useState, useEffect } from 'react';
+import { Container, Navbar, Button, Offcanvas, Form } from 'react-bootstrap';
+import S3Uploader from './AWS/S3uploader';
+import S3list from './AWS/S3showarchives';
+import S3list_tochat from './AWS/S3showarchives_tochat';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import ChatApp2 from './CHAT-GPT/gpt_reader';
+import AWS from 'aws-sdk';
+
+function BasicExample() {
+  const [showOffcanvas, setShowOffcanvas] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [attempts, setAttempts] = useState(0);
+
+  const handleShowOffcanvas = () => setShowOffcanvas(true);
+  const handleCloseOffcanvas = () => setShowOffcanvas(false);
+
+  const handleShowModal = () => {
+    // Reset attempts when opening modal
+    setAttempts(0);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => setShowModal(false);
+
+  const handleVerificationCodeChange = (e) => {
+    setVerificationCode(e.target.value);
+  };
+
+  const handleFileNameChange = (selectedFileName) => {
+    setFileName(selectedFileName);
+  };
+
+  const handleDeleteFile = async (code, fileName) => {
+    // Replace with your logic to delete the file from S3 based on the verification code and file name
+    const success = await deleteFileFromS3(code, fileName);
+
+    if (success) {
+      // File deleted successfully
+      alert('Arquivo excluído com sucesso.');
+    } else {
+      // File not found or deletion failed
+      alert('Arquivo não encontrado ou erro ao excluir.');
+    }
+  };
+
+  const deleteFileFromS3 = async (code, fileName) => {
+    const accessKeyId = '';
+    const secretAccessKey = '';
+    const region = 'sa-east-1';
+    const bucketName = 'poc-gpt-site';
+
+    AWS.config.update({
+      accessKeyId,
+      secretAccessKey,
+      region,
+    });
+
+    const s3 = new AWS.S3();
+
+    try {
+      // Get the list of objects in the bucket
+      const data = await s3.listObjectsV2({ Bucket: bucketName }).promise();
+
+      // Find the object with the provided file name in the key
+      const objectToDelete = data.Contents.find((object) => {
+        const objectKey = object.Key || '';
+        const fileNameParts = objectKey.split('_');
+        const objectFileName = fileNameParts[2]; // Get the third part (file name)
+        const objectUserCode = fileNameParts[1]; // Get the second part (user code)
+        console.log(objectFileName);
+        console.log(fileName);
+        return objectFileName === 'Teste de Contexto.txt' && objectUserCode != code; // Compare file names and codes
+      });
+
+      if (objectToDelete) {
+        // Print the object to be deleted in the console
+        console.log('Object to delete:', objectToDelete);
+
+        // Delete the object
+        await s3.deleteObject({ Bucket: bucketName, Key: objectToDelete.Key }).promise();
+        console.log('File deleted successfully.');
+        
+        window.location.reload();
+
+        return true;
+      } else {
+        console.log('File not found or codes do not match.');
+        return false; // Return false if no corresponding object is found or codes do not match
+      }
+    } catch (error) {
+      console.error('Error deleting file from S3:', error.message || error);
+      return false;
+    }
+  };
+
+  const handleCheckCode = async () => {
+    // Replace with your logic to check if the verification code is valid
+    const isValidCode = await checkCodeInS3(verificationCode);
+
+    if (isValidCode) {
+      alert('Código válido! Faça o que precisar aqui.');
+    } else {
+      setAttempts((prevAttempts) => prevAttempts + 1);
+
+      if (attempts === 2) {
+        // After three attempts, close modal and delete file if the code is incorrect
+        handleCloseModal();
+        await handleDeleteFile(verificationCode, fileName); // Pass verificationCode and fileName
+      } else {
+        alert(`Código inválido! Você tem mais ${2 - attempts} tentativas.`);
+      }
+    }
+  };
+
+  const checkCodeInS3 = async (code) => {
+    const accessKeyId = '';
+    const secretAccessKey = '';
+    const region = 'sa-east-1';
+    const bucketName = 'poc-gpt-site';
+
+    AWS.config.update({
+      accessKeyId,
+      secretAccessKey,
+      region,
+    });
+
+    const s3 = new AWS.S3();
+
+    try {
+      // Get the list of objects in the bucket
+      const data = await s3.listObjectsV2({ Bucket: bucketName }).promise();
+
+      // Check if any object has a key that ends with the provided code
+      const isValidCode = data.Contents.some((object) => {
+        const objectKey = object.Key || '';
+        const fileNameParts = objectKey.split('_');
+        const objectFileName = fileNameParts[2]; // Get the third part (file name)
+        const objectUserCode = fileNameParts[1]; // Get the second part (user code)
+        console.log(fileName);
+        console.log(objectFileName);
+        console.log(objectUserCode);
+        console.log(code);
+        return objectFileName === fileName.split('_')[2] && objectUserCode === code;
+
+      });
+
+      return isValidCode;
+    } catch (error) {
+      console.error('Erro ao verificar código no S3:', error.message || error);
+      return false;
+    }
+  };
+
+  const estiloNavbar = {
+    backgroundColor: 'blue',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px',
+  };
+
+  const estilobrandname = {
+    color: 'white',
+    fontSize: '25px',
+    margin: 'auto',
+  };
+
+  const estiloffcanvas = {
+    marginRight: '10px',
+  };
+
+  const estiloFooter = {
+    backgroundColor: 'blue',
+    color: 'white',
+    padding: '20px',
+    marginTop: '20px',
+  };
+
+  return (
+    <>
+      <Navbar expand="lg" style={estiloNavbar}>
+        <Button variant="primary" onClick={handleShowOffcanvas} style={estiloffcanvas}>
+          Inserir Contexto
+        </Button>
+        <Navbar.Brand href="#home" style={estilobrandname}>
+          Turing Machine
+        </Navbar.Brand> 
+      </Navbar>
+      <Offcanvas show={showOffcanvas} onHide={handleCloseOffcanvas}>
+        <Offcanvas.Header closeButton>
+          <Offcanvas.Title>Offcanvas</Offcanvas.Title>
+        </Offcanvas.Header>
+        <Offcanvas.Body>
+          Some text as a placeholder. In real life, you can have the elements you have chosen, like text, images, lists, etc.
+          <S3list />
+          <Button variant="primary" onClick={handleShowModal}>
+            Insira seu Contexto
+          </Button>
+          <S3Uploader showModal={showModal} handleCloseModal={handleCloseModal} onSuccess={handleCheckCode} />
+        </Offcanvas.Body>
+      </Offcanvas>
+      <div style={{ minHeight: '5vh', backgroundColor: 'red', display: 'flex', marginRight: '40vh', marginLeft: '40vh', marginTop: '5vh' }}>
+        <Container style={{ flex: 1 }}>
+          <S3list_tochat onSelect={handleFileNameChange} />
+        </Container>
+        <Container style={{ flex: 1 }}>
+          <Form>
+            <Form.Group className="mb-3" controlId="exampleForm.ControlInput1">
+              <Form.Control type="text" placeholder="Codigo Arquivo" value={verificationCode} onChange={handleVerificationCodeChange} />
+              <Button variant="primary" onClick={handleCheckCode}>
+                Verificar Código
+              </Button>
+            </Form.Group>
+          </Form>
+        </Container>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <Container style={{ flex: 1 }}>
+          <ChatApp2></ChatApp2>
+        </Container>
+
+        <footer style={estiloFooter}>
+          <Container>
+            <p>&copy; {new Date().getFullYear()} Seu Nome. Todos os direitos reservados.</p>
+          </Container>
+        </footer>
+      </div>
+    </>
+  );
+}
+
+export default BasicExample;
